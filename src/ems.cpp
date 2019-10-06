@@ -184,7 +184,7 @@ const _EMS_Type EMS_Types[] = {
     {EMS_MODEL_ALL, EMS_TYPE_RCPLUSStatusMode, "RCPLUSStatusMode", _process_RCPLUSStatusMode},
 
     // Junkers FR10
-    {EMS_MODEL_ALL, EMS_TYPE_JunkersStatusMessage, "JunkersStatusMessage", _process_JunkersStatusMessage}
+    {EMS_MODEL_ALL, EMS_PLUS_TYPE_JunkersStatusMessage, "JunkersStatusMessage", _process_JunkersStatusMessage}
 
 
 };
@@ -625,38 +625,37 @@ void _ems_sendTelegram() {
         return;
     }
 
-    // create the header
+    // source: create the header
     EMS_TxTelegram.data[0] = EMS_ID_ME ^ EMS_Sys_Status.emsIDMask; // src
 
-    // dest
+    // destination
     if (EMS_TxTelegram.action == EMS_TX_TELEGRAM_WRITE) {
         EMS_TxTelegram.data[1] = EMS_TxTelegram.dest;
     } else {
         // for a READ or VALIDATE
         EMS_TxTelegram.data[1] = (EMS_TxTelegram.dest | 0x80); // read has 8th bit set, always 
     }
+    
+    EMS_TxTelegram.data[2] = EMS_TxTelegram.type;   // type
+    EMS_TxTelegram.data[3] = EMS_TxTelegram.offset; // offset
 
     // complete the rest of the header depending on EMS or EMS+
-    if (EMS_TxTelegram.type > 0xFF) {
+    if (EMS_TxTelegram.type >= 0xF0 || EMS_TxTelegram.EMSplus) {
         // EMS 2.0 / EMS+
-        EMS_TxTelegram.data[2] = 0xFF; // fixed value indicating an extended message
-        EMS_TxTelegram.data[3] = EMS_TxTelegram.offset;
         EMS_TxTelegram.length += 2; // add 2 bytes to length to compensate the extra FF and byte for the type
 
         // EMS+ has different format for read and write. See https://github.com/proddy/EMS-ESP/wiki/RC3xx-Thermostats
         if ((EMS_TxTelegram.action == EMS_TX_TELEGRAM_READ) || (EMS_TxTelegram.action == EMS_TX_TELEGRAM_VALIDATE)) {
             EMS_TxTelegram.data[4] = EMS_TxTelegram.dataValue;   // for read its #bytes to return
-            EMS_TxTelegram.data[5] = EMS_TxTelegram.type >> 8;   // type, 1st byte
-            EMS_TxTelegram.data[6] = EMS_TxTelegram.type & 0xFF; // type, 2nd byte
+            EMS_TxTelegram.data[5] = EMS_TxTelegram.emsplus_type >> 8;   // type, 1st byte
+            EMS_TxTelegram.data[6] = EMS_TxTelegram.emsplus_type & 0xFF; // type, 2nd byte
         } else if (EMS_TxTelegram.action == EMS_TX_TELEGRAM_WRITE) {
-            EMS_TxTelegram.data[4] = EMS_TxTelegram.type >> 8;   // type, 1st byte
-            EMS_TxTelegram.data[5] = EMS_TxTelegram.type & 0xFF; // type, 2nd byte
+            EMS_TxTelegram.data[4] = EMS_TxTelegram.emsplus_type >> 8;   // type, 1st byte
+            EMS_TxTelegram.data[5] = EMS_TxTelegram.emsplus_type & 0xFF; // type, 2nd byte
             EMS_TxTelegram.data[6] = EMS_TxTelegram.dataValue;   // for write it the value to set
         }
     } else {
         // EMS 1.0
-        EMS_TxTelegram.data[2] = EMS_TxTelegram.type;   // type
-        EMS_TxTelegram.data[3] = EMS_TxTelegram.offset; // offset
         if (EMS_TxTelegram.length == EMS_MIN_TELEGRAM_LENGTH) {
             EMS_TxTelegram.data[4] = EMS_TxTelegram.dataValue; // for read its #bytes to return, for write it the value to set
         }
@@ -669,11 +668,11 @@ void _ems_sendTelegram() {
     if (EMS_Sys_Status.emsLogging == EMS_SYS_LOGGING_VERBOSE) {
         char s[64] = {0};
         if (EMS_TxTelegram.action == EMS_TX_TELEGRAM_WRITE) {
-            snprintf(s, sizeof(s), "Sending write of type 0x%02X to 0x%02X, ", EMS_TxTelegram.type, EMS_TxTelegram.dest & 0x7F);
+            snprintf(s, sizeof(s), "Sending write of type 0x%02X to 0x%02X, ", EMS_TxTelegram.emsplus ? EMS_TxTelegram.emsplus_type : EMS_TxTelegram.type, EMS_TxTelegram.dest & 0x7F);
         } else if (EMS_TxTelegram.action == EMS_TX_TELEGRAM_READ) {
-            snprintf(s, sizeof(s), "Sending read of type 0x%02X to 0x%02X, ", EMS_TxTelegram.type, EMS_TxTelegram.dest & 0x7F);
+            snprintf(s, sizeof(s), "Sending read of type 0x%02X to 0x%02X, ", EMS_TxTelegram.emsplus ? EMS_TxTelegram.emsplus_type : EMS_TxTelegram.type, EMS_TxTelegram.dest & 0x7F);
         } else if (EMS_TxTelegram.action == EMS_TX_TELEGRAM_VALIDATE) {
-            snprintf(s, sizeof(s), "Sending validate of type 0x%02X to 0x%02X, ", EMS_TxTelegram.type, EMS_TxTelegram.dest & 0x7F);
+            snprintf(s, sizeof(s), "Sending validate of type 0x%02X to 0x%02X, ", EMS_TxTelegram.emsplus ? EMS_TxTelegram.emsplus_type : EMS_TxTelegram.type, EMS_TxTelegram.dest & 0x7F);
         }
 
         _EMS_RxTelegram EMS_RxTelegram;
@@ -1524,8 +1523,8 @@ void _process_JunkersStatusMessage(_EMS_RxTelegram * EMS_RxTelegram) {
         uint8_t hc                   = EMS_THERMOSTAT_DEFAULTHC - 1; // use HC1
         EMS_Thermostat.hc[hc].active = true;
 
-        // e.g. for FR10:  90 00 FF 00 00 6F   03 01 00 BE 00 BF
-        // e.g. for FW100: 90 00 FF 00 00 6F   03 02 00 D7 00 DA F3 34 00 C4
+        // e.g. for FR10:  90 00 FF 00 00 6F 03 01 00 BE 00 BF
+        // e.g. for FW100: 90 00 FF 00 00 6F 03 02 00 D7 00 DA F3 34 00 C4
         EMS_Thermostat.hc[hc].curr_roomTemp     = _toShort(EMS_OFFSET_JunkersStatusMessage_curr);     // value is * 10
         EMS_Thermostat.hc[hc].setpoint_roomTemp = _toShort(EMS_OFFSET_JunkersStatusMessage_setpoint); // value is * 10
     }
@@ -2911,12 +2910,12 @@ void ems_setThermostatMode(uint8_t mode, uint8_t hc_num) {
         }
     }
 
+
     myDebug_P(PSTR("Setting thermostat mode to %d for heating circuit %d"), mode, hc_num);
 
     _EMS_TxTelegram EMS_TxTelegram = EMS_TX_TELEGRAM_NEW; // create new Tx
     EMS_TxTelegram.timestamp       = millis();            // set timestamp
     EMS_Sys_Status.txRetryCount    = 0;                   // reset retry counter
-
     EMS_TxTelegram.action    = EMS_TX_TELEGRAM_WRITE;
     EMS_TxTelegram.dest      = device_id;
     EMS_TxTelegram.length    = EMS_MIN_TELEGRAM_LENGTH;
@@ -2955,12 +2954,20 @@ void ems_setThermostatMode(uint8_t mode, uint8_t hc_num) {
     } else if (model_id == EMS_MODEL_RC300) {
         EMS_TxTelegram.type   = EMS_TYPE_RCPLUSSet; // for 3000 and 1010, e.g. 48 10 FF 00 01 B9 00 for manual
         EMS_TxTelegram.offset = EMS_OFFSET_RCPLUSSet_mode;
-
         // EMS_TxTelegram.type_validate = EMS_TYPE_RCPLUSStatusMessage_HC1; // validate by reading from a different telegram
         EMS_TxTelegram.type_validate      = EMS_ID_NONE;                                   // don't validate after the write
         EMS_TxTelegram.comparisonPostRead = EMS_TYPE_RCPLUSStatusMessage_HC1 + hc_num - 1; // after write, do a full fetch of all values
+    
+    } else if (model_id == EMS_MODEL_FW100 || model_id == EMS_MODEL_FW120) {
+        // example telegram to switch to eco: 8B 10 FF 0E 00 65 01
+        EMS_TxTelegram.type               = 0XFF; // marker for EMS plus
+        EMS_TxTelegram.offset             = EMS_OFFSET_JunkersSet_mode;
+        EMS_TxTelegram.type_validate      = EMS_TxTelegram.type;
+        EMS_TxTelegram.comparisonPostRead = EMS_PLUS_TYPE_JunkersSet;
+        EMS_TxTelegram.emsplus            = true;
+        EMS_TxTelegram.emsplus_type       = EMS_PLUS_TYPE_JunkersSet;
     }
-
+    
     EMS_TxTelegram.comparisonOffset = EMS_TxTelegram.offset;
     EMS_TxTelegram.comparisonValue  = EMS_TxTelegram.dataValue;
     EMS_TxTelegram.forceRefresh     = false; // send to MQTT is done automatically in 0xA8 process

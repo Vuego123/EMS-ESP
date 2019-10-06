@@ -138,10 +138,21 @@
 #define EMS_OFFSET_RCPLUSSet_temp_setpoint 8    // temp setpoint, when changing of templevel (in auto) value is reset and set to FF
 #define EMS_OFFSET_RCPLUSSet_manual_setpoint 10 // manual setpoint
 
-// Junkers FR10, FW100 (EMS Plus)
-#define EMS_TYPE_JunkersStatusMessage 0x6F         // is an automatic thermostat broadcast giving us temps
-#define EMS_OFFSET_JunkersStatusMessage_setpoint 2 // setpoint temp
-#define EMS_OFFSET_JunkersStatusMessage_curr 4     // current temp
+// Junkers FR10, FW100, FW120 (Heatronic 3 - EMS Plus)
+
+    // JunkersStatusMessage: thermostat broadcast message giving us current temps and setpoint temps
+#define EMS_TYPE_JunkersStatusMessage 0xFF         // EMS type is the EMS+ Marker
+#define EMS_PLUS_TYPE_JunkersStatusMessage 0x6F    // EMS+ Type of the JunkersStatusMessage
+#define EMS_OFFSET_JunkersStatusMessage_setpoint 2 // Offset for the setpoint temp
+#define EMS_OFFSET_JunkersStatusMessage_curr 4     // Offset for the current temp
+
+    // JunkersSet: Message thermostat message containing Termostat mode and setpoints. Also used for writing
+#define EMS_TYPE_JunkersSet 0xFF                // EMS type is the EMS+ Marker
+#define EMS_PLUS_TYPE_JunkersSet 0x0065         // EMS+ Type of the JunkersSet
+#define EMS_OFFSET_JunkersSet_mode 14           // position of thermostat mode
+#define EMS_OFFSET_JunkersSet_temp_eco 15       // position of thermostat setpoint temperature
+#define EMS_OFFSET_JunkersSet_temp_saving 16    // position of thermostat setpoint temperature
+#define EMS_OFFSET_JunkersSet_temp_comfort 17   // position of thermostat setpoint temperature
 
 
 // Known EMS devices
