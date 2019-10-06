@@ -640,7 +640,7 @@ void _ems_sendTelegram() {
     EMS_TxTelegram.data[3] = EMS_TxTelegram.offset; // offset
 
     // complete the rest of the header depending on EMS or EMS+
-    if (EMS_TxTelegram.type >= 0xF0 || EMS_TxTelegram.EMSplus) {
+    if (EMS_TxTelegram.type >= 0xF0 || EMS_TxTelegram.emsplus) {
         // EMS 2.0 / EMS+
         EMS_TxTelegram.length += 2; // add 2 bytes to length to compensate the extra FF and byte for the type
 

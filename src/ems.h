@@ -236,8 +236,8 @@ const _EMS_TxTelegram EMS_TX_TELEGRAM_NEW = {
     0,                    // offset
     0,                    // length
     0,                    // data value
-    false,                    // emsplus message? 
-    0x00,                    // emsplus type
+    false,                // emsplus message? 
+    0x00,                 // emsplus type
     EMS_ID_NONE,          // type_validate
     0,                    // comparisonValue
     0,                    // comparisonOffset
